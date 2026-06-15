@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>편입일 이후 변화 안내 · 프로토타입</title>
+<style>
+  :root{
+    --ink:#16171b; --sub:#9499a3; --line:#eceef1; --accent:#2f6fed;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{
+    margin:0; height:100%;
+    font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Malgun Gothic","Noto Sans KR",sans-serif;
+    background:radial-gradient(120% 120% at 50% 0%, #2a2d33 0%, #16181c 55%, #0c0d10 100%);
+    color:var(--ink);
+  }
+  .stage{ min-height:100vh; display:flex; align-items:center; justify-content:center; padding:34px 16px; }
+
+  /* ===== Phone ===== */
+  .phone{
+    position:relative; width:392px; aspect-ratio:1080/2340;
+    border-radius:52px; padding:11px; background:#0a0a0b;
+    box-shadow:0 40px 90px rgba(0,0,0,.55), inset 0 0 0 2px #303236;
+  }
+  .screen{
+    position:relative; width:100%; height:100%; border-radius:42px; overflow:hidden;
+    background:#fff url('bg.png') top center / 100% auto no-repeat;
+  }
+
+  /* ===== Floating module (위치: 리스트 아래, 바텀 내비 위) ===== */
+  .dock{
+    position:absolute; left:12px; right:12px; bottom:15.5%; z-index:20;
+    background:#fff; border-radius:20px;
+    box-shadow:0 12px 36px rgba(15,23,42,.14); border:1px solid rgba(20,30,60,.04);
+    padding:14px 0 13px;
+  }
+  .dock-head{ display:flex; align-items:center; padding:0 16px 11px; }
+  .dock-head .lbl{ font-size:12px; font-weight:600; color:var(--sub); letter-spacing:-.2px; }
+  .dock-head .lbl b{ color:var(--ink); font-weight:700; }
+  .dock-head .x{ margin-left:auto; font-size:16px; color:#c4c8cf; cursor:pointer; line-height:1; padding:2px 4px; }
+
+  .track{ display:flex; gap:10px; overflow-x:auto; scroll-snap-type:x mandatory; padding:0 16px; scroll-behavior:smooth; cursor:grab; }
+  .track.dragging{ cursor:grabbing; scroll-behavior:auto; }
+  .track::-webkit-scrollbar{ display:none; }
+
+  .card{
+    flex:0 0 calc(100% - 40px); scroll-snap-align:center; user-select:none;
+    border:1px solid var(--line); border-radius:16px; padding:14px 15px 12px; background:#fff;
+    transition:border-color .15s;
+  }
+  .card:active{ border-color:#dfe3ea; }
+  .card .top{ display:flex; align-items:flex-start; }
+  .card .nm{ font-size:15px; font-weight:700; letter-spacing:-.3px; }
+  .card .cd{ font-size:11px; color:var(--sub); margin-top:3px; }
+  .card .pct{ margin-left:auto; text-align:right; }
+  .card .pct .v{ font-size:18px; font-weight:800; color:var(--accent); letter-spacing:-.5px; }
+  .card .pct .k{ font-size:10px; color:var(--sub); margin-top:2px; }
+
+  .card .spark{ height:42px; margin:11px 0 10px; }
+  .card .spark svg{ width:100%; height:100%; display:block; }
+
+  .card .foot{ display:flex; align-items:center; }
+  .card .foot .mv{ font-size:11.5px; color:var(--sub); letter-spacing:-.2px; }
+  .card .foot .mv .now{ color:var(--ink); font-weight:700; }
+  .card .foot .go{ margin-left:auto; font-size:13px; color:#bcc1c9; font-weight:700; }
+
+  .dots{ display:flex; gap:5px; justify-content:center; margin-top:12px; }
+  .dots .d{ width:5px;height:5px;border-radius:50%; background:#d7dbe2; transition:.25s; }
+  .dots .d.on{ background:var(--accent); width:16px; border-radius:3px; }
+
+  .reopen{
+    position:absolute; left:50%; bottom:16.5%; transform:translateX(-50%) translateY(16px); z-index:21;
+    background:#16171b; color:#fff; border:0; border-radius:22px; padding:9px 16px;
+    font-size:12px; font-weight:600; cursor:pointer; opacity:0; pointer-events:none; transition:.3s;
+    box-shadow:0 10px 24px rgba(0,0,0,.28);
+  }
+  .reopen.on{ opacity:1; pointer-events:auto; transform:translateX(-50%) translateY(0); }
+
+  /* ===== Bottom sheet (매수) ===== */
+  .scrim{ position:absolute; inset:0; z-index:40; background:rgba(10,12,18,.4); opacity:0; pointer-events:none; transition:.28s; }
+  .scrim.on{ opacity:1; pointer-events:auto; }
+  .sheet{
+    position:absolute; left:0; right:0; bottom:0; z-index:50; background:#fff;
+    border-radius:24px 24px 0 0; padding:10px 22px 26px; transform:translateY(110%);
+    transition:transform .32s cubic-bezier(.2,.85,.25,1);
+  }
+  .sheet.on{ transform:translateY(0); }
+  .sheet .grip{ width:40px;height:4px;border-radius:3px;background:#e8eaee;margin:6px auto 18px; }
+  .sheet .nm{ font-size:19px; font-weight:800; letter-spacing:-.4px; }
+  .sheet .cd{ font-size:12px; color:var(--sub); margin-top:3px; }
+  .stat{ margin-top:18px; border-top:1px solid var(--line); }
+  .stat .r{ display:flex; justify-content:space-between; font-size:13.5px; padding:12px 0; border-bottom:1px solid var(--line); color:#5b616b; }
+  .stat .r b{ color:var(--ink); font-weight:700; }
+  .stat .r b.acc{ color:var(--accent); }
+  .buybar{ display:flex; gap:9px; margin-top:20px; }
+  .buybar button{ padding:15px; border:0; border-radius:13px; font-size:15.5px; font-weight:700; cursor:pointer; letter-spacing:-.3px; }
+  .btn-keep{ flex:0 0 32%; background:#f3f4f6; color:#6b7079; }
+  .btn-buy{ flex:1; background:var(--accent); color:#fff; }
+  .btn-buy:active{ background:#2a63d6; }
+
+  .toast{
+    position:absolute; left:50%; bottom:30px; transform:translateX(-50%) translateY(14px); z-index:90;
+    background:rgba(22,23,27,.94); color:#fff; padding:12px 18px; border-radius:14px; font-size:13px; font-weight:600;
+    opacity:0; transition:.3s; white-space:nowrap;
+  }
+  .toast.on{ opacity:1; transform:translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="phone">
+    <div class="screen">
+
+      <div class="dock" id="dock">
+        <div class="dock-head">
+          <span class="lbl">편입일 종가보다 내려간 관심종목 <b id="cnt">2</b></span>
+          <span class="x" id="closeBtn">✕</span>
+        </div>
+        <div class="track" id="track"></div>
+        <div class="dots" id="dots"></div>
+      </div>
+
+      <button class="reopen" id="reopen">관심종목 가격 변화 다시 보기</button>
+
+      <div class="scrim" id="scrim"></div>
+      <div class="sheet" id="sheet">
+        <div class="grip"></div>
+        <div id="sheetBody"></div>
+      </div>
+
+      <div class="toast" id="toast"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const THRESH = 8;
+const STOCKS = [
+  { name:"SK하이닉스", code:"000660", market:"KOSPI", domestic:true, held:false,
+    price:2290000, anchor:2620000, addedAt:"2026.05.12", unit:"₩" },
+  { name:"현대차", code:"005380", market:"KOSPI", domestic:true, held:false,
+    price:645000, anchor:712000, addedAt:"2026.04.20", unit:"₩" },
+];
+function dropPct(s){ return ((s.price - s.anchor)/s.anchor)*100; }
+function fmt(n,u){ return u==="₩"? Number(n).toLocaleString("ko-KR") : Number(n).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function triggered(){ return STOCKS.filter(s=>!s.held && s.domestic && dropPct(s)<=-THRESH); }
+
+function spark(s){
+  const w=300,h=42,n=14, drop=dropPct(s);
+  let seed=0; for(const c of s.code) seed+=c.charCodeAt(0);
+  let pts=[]; for(let i=0;i<n;i++){ const t=i/(n-1);
+    pts.push(drop*t + Math.sin((i+seed)*1.6)*Math.abs(drop)*0.15); }
+  pts[0]=0; pts[n-1]=drop;
+  const mn=Math.min(...pts)-1, mx=Math.max(...pts,0)+1;
+  const c=pts.map((v,i)=>[ (i/(n-1))*w, h-((v-mn)/(mx-mn))*h ]);
+  const line=c.map(p=>p[0].toFixed(1)+","+p[1].toFixed(1)).join(" ");
+  const end=c[c.length-1];
+  return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+    <line x1="0" y1="${c[0][1].toFixed(1)}" x2="${w}" y2="${c[0][1].toFixed(1)}" stroke="#e7eaef" stroke-width="1" stroke-dasharray="3 4"/>
+    <polyline points="${line}" fill="none" stroke="#2f6fed" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="${(w-2).toFixed(1)}" cy="${end[1].toFixed(1)}" r="3" fill="#2f6fed"/>
+  </svg>`;
+}
+
+function cardHTML(s){
+  const d=dropPct(s).toFixed(1);
+  return `<div class="card" data-code="${s.code}" data-dragged="0">
+    <div class="top">
+      <div><div class="nm">${s.name}</div><div class="cd">${s.market} · ${s.code}</div></div>
+      <div class="pct"><div class="v">${d}%</div><div class="k">편입일 대비</div></div>
+    </div>
+    <div class="spark">${spark(s)}</div>
+    <div class="foot">
+      <div class="mv">편입일 종가 ${fmt(s.anchor,s.unit)} → <span class="now">${fmt(s.price,s.unit)}</span></div>
+      <div class="go">›</div>
+    </div>
+  </div>`;
+}
+
+function render(){
+  const trg=triggered();
+  const dock=document.getElementById("dock");
+  if(trg.length===0){ dock.style.display="none"; document.getElementById("reopen").classList.remove("on"); return; }
+  dock.style.display="block";
+  document.getElementById("cnt").textContent=trg.length;
+  const track=document.getElementById("track");
+  track.innerHTML=trg.map(cardHTML).join("");
+  document.getElementById("dots").innerHTML=trg.map((_,i)=>`<span class="d ${i===0?'on':''}"></span>`).join("");
+  track.querySelectorAll(".card").forEach(c=>{
+    c.addEventListener("click",()=>{ if(c.dataset.dragged==="1"){c.dataset.dragged="0";return;} openSheet(c.dataset.code); });
+  });
+  setupSwipe(track, trg.length);
+}
+
+function setupSwipe(track,count){
+  let down=false,sx=0,ss=0,moved=0;
+  track.addEventListener("pointerdown",e=>{down=true;track.classList.add("dragging");sx=e.clientX;ss=track.scrollLeft;moved=0;});
+  window.addEventListener("pointermove",e=>{ if(!down)return; const dx=e.clientX-sx; moved=Math.abs(dx); track.scrollLeft=ss-dx; });
+  window.addEventListener("pointerup",()=>{ if(!down)return; down=false; track.classList.remove("dragging");
+    if(moved>6){ track.querySelectorAll(".card").forEach(c=>c.dataset.dragged="1"); snap(track); } });
+  track.addEventListener("scroll",()=>updateDots(track,count));
+}
+function idxOf(track){ const c=track.querySelector(".card"); if(!c)return 0; return Math.round(track.scrollLeft/(c.offsetWidth+10)); }
+function snap(track){ const c=track.querySelector(".card"); if(!c)return; const w=c.offsetWidth+10; track.scrollTo({left:idxOf(track)*w,behavior:"smooth"}); }
+function updateDots(track,count){ const i=Math.max(0,Math.min(count-1,idxOf(track)));
+  document.querySelectorAll("#dots .d").forEach((d,k)=>d.classList.toggle("on",k===i)); }
+
+let cur=null;
+function openSheet(code){
+  const s=STOCKS.find(x=>x.code===code); cur=s;
+  const d=dropPct(s).toFixed(2);
+  document.getElementById("sheetBody").innerHTML=`
+    <div class="nm">${s.name}</div><div class="cd">${s.market} · ${s.code}</div>
+    <div class="stat">
+      <div class="r"><span>편입일</span><b>${s.addedAt}</b></div>
+      <div class="r"><span>편입일 종가</span><b>${fmt(s.anchor,s.unit)}</b></div>
+      <div class="r"><span>현재가</span><b>${fmt(s.price,s.unit)}</b></div>
+      <div class="r"><span>편입일 대비</span><b class="acc">${d}%</b></div>
+    </div>
+    <div class="buybar">
+      <button class="btn-keep" id="keepBtn">관심 유지</button>
+      <button class="btn-buy" id="buyBtn">매수</button>
+    </div>`;
+  document.getElementById("scrim").classList.add("on");
+  document.getElementById("sheet").classList.add("on");
+  document.getElementById("buyBtn").addEventListener("click",()=>{ cur.held=true; closeSheet(); toast(`${cur.name} 매수 주문이 접수되었어요`); render(); });
+  document.getElementById("keepBtn").addEventListener("click",closeSheet);
+}
+function closeSheet(){ document.getElementById("scrim").classList.remove("on"); document.getElementById("sheet").classList.remove("on"); }
+document.getElementById("scrim").addEventListener("click",closeSheet);
+function toast(m){ const t=document.getElementById("toast"); t.textContent=m; t.classList.add("on"); setTimeout(()=>t.classList.remove("on"),1900); }
+
+document.getElementById("closeBtn").addEventListener("click",()=>{ document.getElementById("dock").style.display="none"; document.getElementById("reopen").classList.add("on"); });
+document.getElementById("reopen").addEventListener("click",()=>{ document.getElementById("dock").style.display="block"; document.getElementById("reopen").classList.remove("on"); });
+
+render();
+</script>
+</body>
+</html>
