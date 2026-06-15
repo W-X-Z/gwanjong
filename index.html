@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>연관 종목 추천 · 프로토타입</title>
+<style>
+  :root {
+    --up: #e2342d;
+    --down: #2f6fed;
+    --ink: #1a1a1a;
+    --sub: #8a8f99;
+    --line: #ededf0;
+    --brand-deep: #e2342d;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+    background: #e9ebef; color: var(--ink);
+  }
+  .page {
+    display:flex; gap:28px; padding:28px; align-items:flex-start; justify-content:center;
+    flex-wrap:wrap; min-height:100vh;
+  }
+
+  /* ===== Phone frame ===== */
+  .phone {
+    width:390px; height:800px; background:#fff; border-radius:42px;
+    box-shadow:0 24px 60px rgba(0,0,0,.22), 0 0 0 11px #111, 0 0 0 13px #2b2b2b;
+    position:relative; overflow:hidden; flex:none;
+  }
+  .screen { position:absolute; inset:0; display:flex; flex-direction:column; }
+
+  /* 전체 스크롤 영역 (퀵메뉴 제거 → 더 긴 스크롤) */
+  .scroll { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; background:#fff; }
+  .scroll::-webkit-scrollbar { width:0; }
+
+  /* BG: Frame 2147220813 MTS 화면 그대로 */
+  .mts-bg { display:block; width:100%; }
+
+  /* ===== 연관 종목 추천 (롤링) ===== */
+  .reco {
+    margin:0; padding:18px 16px 22px;
+    background:#fafbfc; border-top:8px solid #eef0f3;
+  }
+  .reco-head { display:flex; align-items:center; margin-bottom:2px; }
+  .reco-head .tag {
+    font-size:11px; font-weight:800; color:var(--brand-deep);
+    background:#fff1f1; border-radius:6px; padding:4px 8px; letter-spacing:-.2px;
+  }
+
+  /* 슬라이드 뷰포트 */
+  .viewport { overflow:hidden; position:relative; }
+  .track { display:flex; transition:transform .5s cubic-bezier(.22,.7,.2,1); }
+  .slide { flex:0 0 100%; min-width:100%; padding-top:8px; }
+
+  .reco-title { font-size:17px; font-weight:900; line-height:1.32; letter-spacing:-.3px; margin:6px 0 12px; }
+  .reco-title .hl { color:var(--brand-deep); }
+
+  .stock { display:flex; align-items:center; gap:12px; padding:9px 2px; }
+  .stock .rank { width:14px; font-size:14px; font-weight:900; color:#c4c7cf; text-align:center; flex:none; }
+  .stock .logo { width:40px; height:40px; border-radius:50%; flex:none; position:relative;
+    display:flex; align-items:center; justify-content:center; font-size:16px; font-weight:900; color:#fff; }
+  .stock .logo .fl { position:absolute; right:-2px; bottom:-2px; font-size:11px;
+    background:#fff; border-radius:50%; width:15px; height:15px; display:flex; align-items:center; justify-content:center;
+    box-shadow:0 0 0 1px #eee; }
+  .stock .info { flex:1; min-width:0; }
+  .stock .info .nm2 { font-size:14.5px; font-weight:800; color:#111; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .stock .info .pr { font-size:12px; margin-top:3px; display:flex; gap:6px; align-items:center; }
+  .stock .info .pr .p { color:#444; font-weight:700; }
+  .stock .info .pr .d { font-weight:800; }
+
+  /* 관심추가 CTA (하트) */
+  .heart { flex:none; width:38px; height:38px; border:0; background:transparent; cursor:pointer;
+    display:flex; align-items:center; justify-content:center; padding:0; }
+  .heart svg { width:25px; height:25px; transition:transform .18s; }
+  .heart .h-out { stroke:#c7cad1; stroke-width:1.8; fill:none; }
+  .heart .h-in  { fill:transparent; transition:fill .18s; }
+  .heart.on .h-out { stroke:var(--brand-deep); }
+  .heart.on .h-in  { fill:var(--brand-deep); }
+  .heart:active svg { transform:scale(.82); }
+  .heart.pop svg { animation:pop .42s ease; }
+  @keyframes pop { 0%{transform:scale(.6);} 45%{transform:scale(1.28);} 100%{transform:scale(1);} }
+
+  /* 페이저(점) */
+  .pager { display:flex; gap:6px; justify-content:center; margin-top:14px; }
+  .pager .dot { width:6px; height:6px; border-radius:50%; background:#d8dbe1; transition:.25s; cursor:pointer; }
+  .pager .dot.on { width:18px; border-radius:4px; background:var(--brand-deep); }
+
+  /* Toast */
+  .toast { position:absolute; left:50%; bottom:40px; transform:translateX(-50%) translateY(20px);
+    background:#111; color:#fff; padding:12px 20px; border-radius:30px; font-size:13px; font-weight:700;
+    opacity:0; transition:.3s; z-index:90; white-space:nowrap; }
+  .toast.on { opacity:1; transform:translateX(-50%) translateY(0); }
+
+  /* ===== 안내 패널 ===== */
+  .panel { width:360px; flex:none; background:#fff; border-radius:18px; padding:24px;
+    box-shadow:0 10px 30px rgba(0,0,0,.08); align-self:flex-start; }
+  .panel h2 { margin:0 0 6px; font-size:18px; }
+  .panel p { font-size:13px; color:#666; line-height:1.6; margin:0 0 14px; }
+  .panel ul { margin:0; padding-left:18px; font-size:13px; color:#555; line-height:1.7; }
+  .panel ul b { color:#111; }
+  .panel .controls { margin-top:18px; padding-top:16px; border-top:1px solid var(--line); display:flex; gap:8px; flex-wrap:wrap; }
+  .panel .controls button { flex:1; min-width:120px; padding:11px; border:1.5px solid var(--line);
+    border-radius:11px; background:#fff; font-size:13px; font-weight:800; color:#444; cursor:pointer; }
+  @media (max-width:1280px){ .page{ flex-direction:column; align-items:center; } }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ============ PHONE ============ -->
+  <div class="phone">
+    <div class="screen">
+
+      <!-- 전체 스크롤: MTS 화면(BG) + 하단 연관 추천 -->
+      <div class="scroll" id="scroll">
+        <img class="mts-bg" src="frame_mts_bg.png" alt="관심그룹 MTS 화면" />
+
+        <!-- 연관 종목 추천 (수동 전환) -->
+        <div class="reco">
+          <div class="viewport">
+            <div class="track" id="track"></div>
+          </div>
+          <div class="pager" id="pager"></div>
+        </div>
+      </div>
+
+      <div class="toast" id="toast"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ===================== 연관 추천 세트 (3개) =====================
+const SETS = [
+  {
+    titleHtml: '<span class="hl">SK하이닉스</span>와 관련된<br>반도체 수익률 TOP3',
+    stocks:[
+      { logo:"#3b82f6", init:"한", flag:"🇰🇷", name:"한미반도체", price:"148,900원", pct:"+16.0%", up:true },
+      { logo:"#ef4444", init:"이", flag:"🇰🇷", name:"이수페타시스", price:"58,300원", pct:"+13.9%", up:true },
+      { logo:"#64748b", init:"가", flag:"🇰🇷", name:"가온칩스", price:"71,500원", pct:"+9.4%", up:true },
+    ]
+  },
+  {
+    titleHtml: '<span class="hl">현대차</span>와 관련된<br>자동차부품 수익률 TOP3',
+    stocks:[
+      { logo:"#0ea5e9", init:"모", flag:"🇰🇷", name:"현대모비스", price:"312,000원", pct:"+11.2%", up:true },
+      { logo:"#f59e0b", init:"만", flag:"🇰🇷", name:"HL만도", price:"48,750원", pct:"+8.7%", up:true },
+      { logo:"#10b981", init:"SL", flag:"🇰🇷", name:"에스엘", price:"39,200원", pct:"+5.3%", up:true },
+    ]
+  },
+  {
+    titleHtml: '<span class="hl">앰코</span>와 관련된<br>반도체 패키징 수익률 TOP3',
+    stocks:[
+      { logo:"#8b5cf6", init:"테", flag:"🇰🇷", name:"테스나", price:"42,150원", pct:"+12.6%", up:true },
+      { logo:"#ec4899", init:"하", flag:"🇰🇷", name:"하나마이크론", price:"28,400원", pct:"+10.1%", up:true },
+      { logo:"#14b8a6", init:"엘", flag:"🇰🇷", name:"엘비세미콘", price:"15,980원", pct:"+7.8%", up:true },
+    ]
+  },
+];
+
+const HEART_SVG = `
+  <svg viewBox="0 0 24 24">
+    <path class="h-in"  d="M12 21s-7.5-4.6-10-9.2C.6 8.9 2 5.5 5.2 5.1 7 4.9 8.7 5.8 12 9c3.3-3.2 5-4.1 6.8-3.9C22 5.5 23.4 8.9 22 11.8 19.5 16.4 12 21 12 21z"/>
+    <path class="h-out" d="M12 21s-7.5-4.6-10-9.2C.6 8.9 2 5.5 5.2 5.1 7 4.9 8.7 5.8 12 9c3.3-3.2 5-4.1 6.8-3.9C22 5.5 23.4 8.9 22 11.8 19.5 16.4 12 21 12 21z"/>
+  </svg>`;
+
+function renderReco(){
+  const track = document.getElementById("track");
+  track.innerHTML = SETS.map((set, si)=>`
+    <div class="slide">
+      <div class="reco-title">${set.titleHtml}</div>
+      ${set.stocks.map((st, idx)=>`
+        <div class="stock">
+          <div class="rank">${idx+1}</div>
+          <div class="logo" style="background:${st.logo}">${st.init}<span class="fl">${st.flag}</span></div>
+          <div class="info">
+            <div class="nm2">${st.name}</div>
+            <div class="pr"><span class="p">${st.price}</span><span class="d ${st.up?'up':'down'}">${st.pct}</span></div>
+          </div>
+          <button class="heart" data-set="${si}" data-i="${idx}" aria-label="관심추가">${HEART_SVG}</button>
+        </div>`).join("")}
+    </div>`).join("");
+
+  document.getElementById("pager").innerHTML = SETS.map((_,i)=>
+    `<div class="dot ${i===0?'on':''}" data-i="${i}"></div>`).join("");
+
+  track.querySelectorAll(".heart").forEach(h=>{
+    h.addEventListener("click", ()=>{
+      const set = +h.dataset.set, i = +h.dataset.i;
+      const name = SETS[set].stocks[i].name;
+      const liked = h.classList.toggle("on");
+      h.classList.remove("pop"); void h.offsetWidth; h.classList.add("pop");
+      showToast(liked ? `${name} 관심그룹에 추가했어요` : `${name} 관심에서 제외했어요`);
+    });
+  });
+
+  document.querySelectorAll("#pager .dot").forEach(d=>{
+    d.addEventListener("click", ()=> goTo(+d.dataset.i));
+  });
+}
+
+// ===================== 전환 로직 (수동) =====================
+let cur = 0;
+function goTo(i){
+  cur = (i + SETS.length) % SETS.length;
+  document.getElementById("track").style.transform = `translateX(-${cur*100}%)`;
+  document.querySelectorAll("#pager .dot").forEach((d,di)=>d.classList.toggle("on", di===cur));
+}
+
+// 스와이프/드래그
+(function enableSwipe(){
+  const vp = document.querySelector(".viewport");
+  let x0=null;
+  const start = x => x0 = x;
+  const end = x => {
+    if(x0===null) return;
+    const dx = x - x0; x0=null;
+    if(Math.abs(dx) > 40){ dx<0 ? goTo(cur+1) : goTo(cur-1); }
+  };
+  vp.addEventListener("touchstart", e=>start(e.touches[0].clientX), {passive:true});
+  vp.addEventListener("touchend",   e=>end(e.changedTouches[0].clientX));
+  vp.addEventListener("mousedown",  e=>start(e.clientX));
+  window.addEventListener("mouseup", e=>end(e.clientX));
+})();
+
+// ===================== 토스트 =====================
+function showToast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg; t.classList.add("on");
+  clearTimeout(t._t); t._t = setTimeout(()=>t.classList.remove("on"), 1700);
+}
+
+// ===================== 초기화 =====================
+renderReco();
+goTo(0);
+</script>
+</body>
+</html>
